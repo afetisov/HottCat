@@ -74,21 +74,18 @@ End Monads.
 
 Section Algebras.
 
+  (** We need to define a T-algebra on Type (regarding T as a functor, not as a monad). The most important case is `T = List`, `T_act ([X_1, .. , X_n]) := X_1 * .. * X_n`, but there are at least a few other variants (corresponding to commutative product on Type or the structure of commutative ring wrt +,* ). *)
   Context `{TMonad T}.
-<<<<<<< Updated upstream
-=======
+  Variable T_act: T Type -> Type.
 
   (** We regard the type family is_op as a predicate stating that a function `f: T A -> A` is a "virtual operation", i.e. it is an iterated composition of some deining set of primitive operations or their deformations. E.g. if A is a strict semigroup and T = List, then `m: T A -> A` is a tuple (m_0, m_1, .. , m_k, ..) of k-ary products `m_k: A^k -> A` and a virtual operation is a pair (h: T A -> A, p: h = m). Note that in this case all iterated compositions of m are trivially equal to m and thus we can define a composition of virtual operations, extending the usual one. In general there will be nontrivial paths between iterated compositions of m_i, thus we need to choose composition on `sig is_op` beforehand. *)
 (*  Definition VirtualOp {A: Type} (is_op: (T A -> A) -> Type) := 
     exists (f: T A -> A), is_op f.*)
->>>>>>> Stashed changes
 
   Section Composition.
   
     Context {A: Type}.
     Variable is_op : (T A -> A) -> Type.
-    Variable T_act: T Type -> Type.
-    
 
     (** Morally a point in this type corresponds to T h, where h is some virtual operation. In the case T = List such points are lists [f_1, .. , f_k] of operations with arities [n_1, .. , n_k]. *)
     Definition T_is_op: (T (T A) -> T A) -> Type :=
@@ -98,6 +95,9 @@ Section Algebras.
     Definition VirtualCompose :=
       forall (f: sig T_is_op) (g: sig is_op),
       { h: sig is_op | h.1 o join = g.1 o f.1 }.
+    
+    Definition VirtualUnit :=
+      forall (f: sig is_op), f.1 o ret = idmap.
 
   End Composition.
   
@@ -105,15 +105,26 @@ Section Algebras.
   {
     is_op: (T A -> A) -> Type;
     comp: VirtualCompose is_op;
-    unique_operation: Contr (exists f, is_op f)
+    unit: VirtualUnit is_op;
+    unique_op: Contr (sig is_op)
     }.
 
+  Theorem unique_compose: forall (f: sig T_is_op) (g: sig is_op)
+        (R S: VirtualCompose), R f g = S f g.
+    intros.
+    unfold VirtualCompose in R, S.
+    pose (Rx := R f g).
+    pose (Sx := S f g).
+    assert (Rx = Sx).
+    destruct Rx as [?h ?p], Sx as [?h ?p].
+    apply path_sigma.
 
-  Record Assoc_map {X Y: Type} (A: Associative X) (B: Associative Y) :=
+  Record TAlg_map {A B: Type} (AT: TAlgebra A) (BT: TAlgebra B) :=
     {
-      base_map: X -> Y;
-      operation_map: forall (f: VirtualOp A), exists (g: VirtualOp B),
-                      g.1 o base_map = base_map o f.1;
-      compose_map: 
-
+      base_map: A -> B;
+      op_map: forall (f: sig AT.(is_op)), { g: sig BT.(is_op) |
+              g.1 o base_map = base_map o f.1 };
+      compose_map: ???
+    }.
+    
 End Algebras.
