@@ -2,6 +2,8 @@ Require Import HoTT.
 
 Generalizable Variables T F A B.
 
+Local Notation Endofunctor := (Type -> Type).
+(*
 Class TCategory := {
   Ob: Type;
   Hom: relation Ob;
@@ -18,19 +20,20 @@ Global Instance Grpd: TCategory := {
   id := fun x: Type => idmap;
   comp := fun (x y z: Type) (f: y -> z) (g: x -> y) => f o g
   }.
+*)
 
-Class TFunctor (F: Type -> Type) :=
+Class TFunctor (F: Endofunctor) :=
   fmap: forall {A B: Type}, (A -> B) -> (F A -> F B).
 
 Arguments fmap F {_ A B} _ _.
 Global Notation "f $ a" := (fmap f a) (at level 99, right associativity).
 
-Class TApplicative (T: Type -> Type) {E: TFunctor T} := {
-(*  pure: forall {A: Type}, A -> T A; *)  (*Causes bug in Coq. See #4208 *)
+Class TApplicative (T: Endofunctor) {E: TFunctor T} := {
+  pure: forall {A: Type}, A -> T A;
   fzip: forall {A B: Type}, T (A -> B) -> T A -> T B
   }.
 
-Class TMonad (T: Type -> Type) := {
+Class TMonad (T: Endofunctor) := {
   bind: forall {A B: Type}, (T A) -> (A -> T B) -> T B;
   ret: forall {A: Type}, A -> T A
   }.
@@ -42,7 +45,7 @@ Notation "x <- y ; f" := (y >>= (fun x => f))
 
 Section Monads.
 
-  Context `{E: TMonad T}.
+  Context `{TMonad T}.
 
   Global Instance monad_is_functor: TFunctor T :=
     fun `(f: A -> B) (t: T A) => x <- t; ret (f x).
@@ -58,14 +61,47 @@ Section Monads.
   Admitted.
 
   Global Instance monad_is_applicative (A B: Type): TApplicative T
-    := {| fzip := fun A B (f: T (A -> B)) (t: T A) => 
-        a <- t; g <- f; ret (g a) |}.
-(*
-    (* Cannot use this definition due to #4208 *)
-  Global Instance monad_is_applicative (A B: Type): TApplicative T
     := let Tapply A B := fun (f: T (A -> B)) (t: T A) => 
     a <- t; g <- f; ret (g a) 
-    in {| pure := ret; fzip := Tapply |}.
-*)
+    in {| pure := @ret _ _; fzip := Tapply |}.
 
 End Monads.
+
+Section Algebras.
+
+  Context `{TMonad T}.
+
+  Section Composition.
+  
+    Variable A: Type.
+    Variable is_op : (T A -> A) -> Type.
+    Variable T_act: T Type -> Type.
+    
+    Definition T_is_op: (T (T A) -> T A) -> Type.
+    apply (fmap (B:=Type)) in is_op.
+    apply (@fzip _ _ _ (T A -> A) Type) in T is_op.
+    
+    
+  Definition VirtualCompose (is_op : (T A -> A) -> Type) := 
+  
+    let V := (exists f, is_op f) in
+    forall (f g: V), exists (h: V), (g.1 o (list_map f.1) = h.1 o merge).
+
+  Record TAlgebra (A: Type):= 
+  {
+    is_op: (T A -> A) -> Type;
+    comp: VirtualCompose is_op;
+    unique_operation: Contr (exists f, is_op f)
+    }.
+
+  Definition VirtualOp {X: Type} (A: Associative X) := 
+    exists (f: list X -> X), A.(is_op) f.
+
+  Record Assoc_map {X Y: Type} (A: Associative X) (B: Associative Y) :=
+    {
+      base_map: X -> Y;
+      operation_map: forall (f: VirtualOp A), exists (g: VirtualOp B),
+                      g.1 o base_map = base_map o f.1;
+      compose_map: 
+
+End Algebras.
