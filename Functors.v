@@ -2,9 +2,11 @@ Require Import HoTT.
 Require Import Pushforwards.
 Require Import FunextAxiom.
 
-Generalizable Variables T F A B.
+Generalizable Variables T F A B C.
 
 Local Notation Endofunctor := (Type -> Type).
+Notation "f $ x" := (f(x)) (at level 60, right associativity).
+
 (*
 Class TCategory := {
   Ob: Type;
@@ -32,7 +34,7 @@ Class TFunctor (T: Endofunctor) := {
   }.
 
 Arguments fmap T {_} A B _ _.
-Notation "T $ a" := (fmap T _ _ a) (at level 99, right associativity).
+Notation "T $$ a" := (fmap T _ _ a) (at level 60, right associativity).
 
 Class TApplicative (T: Endofunctor) := {
   pure: forall {A: Type}, A -> T A;
@@ -53,7 +55,7 @@ Arguments pure T {_ A} _.
 Arguments fzip T {_} A B _ _.
 
 Notation "[ x ]" := (pure _ x).
-Notation "f $* a" := (fzip _ _ _  f a) (at level 90, right associativity).
+Notation "f $* a" := (fzip _ _ _  f a) (at level 60, right associativity).
 
 Section Applicative.
 
@@ -80,8 +82,8 @@ Section Applicative.
     
   End Applicative_is_functor.
 
-  Lemma pure_natural `(f: A -> B) (x: A): (T $ f) [x] = [f x].
-    unfold "$", applicative_is_functor.
+  Lemma pure_natural `(f: A -> B) (x: A): (T $$ f) [x] = [f x].
+    unfold "$$", applicative_is_functor.
     destruct H; eauto.
     Defined.
 
@@ -89,10 +91,15 @@ End Applicative.
 
 Class TMonad (T: Endofunctor) := {
   bind: forall {A B: Type}, (T A) -> (A -> T B) -> T B;
-  ret: forall {A: Type}, A -> T A
+  ret: forall {A: Type}, A -> T A;
+  ret_unit_left: forall {A B: Type} (k: A -> T B) (a: A),
+                 bind (ret a) k  =  k a;
+  ret_unit_right: forall {A: Type} (m: T A), bind m ret = m;
+  bind_assoc: forall {A B C: Type} (m: T A) (k: A -> T B) (h: B -> T C),
+              bind m (fun x => bind (k x) h) = bind (bind m k) h
   }.
 
-Notation "x >>= f" := (bind x f) (at level 90).
+Notation "x >>= f" := (bind x f) (at level 60).
 Notation "x <- y ; f" := (y >>= (fun x => f)) 
     (at level 100, f at level 200, 
     format "'[v' x  '<-'  y ';' '/' f ']'").
@@ -100,24 +107,87 @@ Notation "x <- y ; f" := (y >>= (fun x => f))
 Section Monads.
 
   Context `{TMonad T}.
+  (*
+  Section Monad_is_functor.
+  
+    Let T_fmap
+    Global Instance monad_is_functor: TFunctor T :=
+      fun `(f: A -> B) (t: T A) => x <- t; ret (f x).
+  
+  End Monad_is_functor.
+  *)
 
-  Global Instance monad_is_functor: TFunctor T :=
-    fun `(f: A -> B) (t: T A) => x <- t; ret (f x).
+  Section Monad_is_applicative.
+  
+    Let T_fzip := fun (A B: Type) (f: T (A -> B)) (t: T A)
+                  => a <- t; g <- f; ret (g a).
+    Let T_pure := @ret _ _.
+    
+    Notation "[ x ]" := (T_pure _ x).
+    Notation "f $* a" := (T_fzip _ _  f a) 
+                         (at level 60, right associativity).
 
+    Local Definition T_pure_id : `(T_fzip A A (T_pure (A -> A) idmap) = idmap).
+      intro; unfold T_fzip, T_pure.
+      by_extensionality t.
+      assert (p := fun a: A => 
+                   (ret_unit_left (fun g => ret (g a)) idmap)^).
+      apply path_forall in p.
+      apply (ap (fun x => (t >>= x) = t)) in p.
+      path_induction.
+      exact (ret_unit_right t).
+      Defined.
+    
+    Local Definition T_homomorphism : forall (A B : Type) (f : A -> B) 
+                      (x : A), ([f] $* [x]) = [f x].
+      intros. unfold T_fzip, T_pure.
+      assert (p := ret_unit_left (fun a => g <- ret f; ret (g a)) x).
+      assert (q := ret_unit_left (fun g => ret (g x)) f).
+      path_induction; done.
+      Defined.
+    
+    Local Definition T_interchange : 
+            forall (A B : Type) (u : T (A -> B)) (x : A),
+            u $* [x] = [fun g => g x] $* u.
+      intros; unfold T_fzip, T_pure.
+      assert (p := (ret_unit_left (fun a => g <- u; ret (g a)) x)^).
+      assert (q := fun a: A -> B => 
+              (ret_unit_left (fun g => ret (g a)) (fun g => g x))^).
+      apply path_forall in q.
+      path_induction.
+      done.
+      Defined.
+    
+    Local Definition T_composition : 
+          forall (A B C: Type) (f: T(B -> C)) (g: T(A -> B)) (x: T A), 
+          f $* (g $* x) = (([compose] $* f) $* g) $* x.
+      intros; unfold T_pure, T_fzip.
+      Admitted.
+
+    Global Instance monad_is_applicative: TApplicative T
+    := {| pure := T_pure; fzip := T_fzip; pure_id := T_pure_id;
+        homomorphism := T_homomorphism; interchange := T_interchange;
+        composition := T_composition |}.
+
+  End Monad_is_applicative.
+  
   Definition join {A: Type} (t: T (T A)): T A 
     := x <- t; x.
 
   Lemma join_is_action (A: Type): 
-    join o (T $ join) = join o (join (A:=T A)).
-  Admitted.
+        join o (T $$ join) = join o (join (A:=T A)).
+    unfold join, fmap. simpl.
+    apply path_forall. unfold "_ == _". intro.
+    f_ap.
+    assert (p := fun a => ret_unit_left (fun g => ret (g a)) 
+          (fun t : T (T A) => x0 <- t; x0)).
+    apply path_forall in p.
+    induction p.
+    rewrite (fun a => ret_unit_left (fun g => ret (g a)) 
+          (fun t : T (T A) => x0 <- t; x0)).
     
-  Lemma ret_is_unit (A: Type) (x: T A): join ((T $ ret) x) = x.
+  Lemma ret_is_unit (A: Type) (x: T A): join ((T $$ ret) x) = x.
   Admitted.
-
-  Global Instance monad_is_applicative: TApplicative T
-    := let Tapply A B := fun (f: T (A -> B)) (t: T A) => 
-    a <- t; g <- f; ret (g a) 
-    in {| pure := @ret _ _; fzip := fun A B => Tapply  A B |}.
 
 End Monads.
 
@@ -138,7 +208,7 @@ Section Algebras.
 
     (** Morally a point in this type corresponds to T h, where h is some virtual operation. In the case T = List such points are lists [f_1, .. , f_k] of operations with arities [n_1, .. , n_k]. *)
     Definition T_is_op: (T (T A) -> T A) -> Type :=
-      let t_fam := T_act o (T $ is_op)
+      let t_fam := T_act o (T $$ is_op)
       in push_sigma t_fam (fzip T _ _).
 
     Definition VirtualCompose :=
