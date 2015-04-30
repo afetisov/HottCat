@@ -1,6 +1,5 @@
 Require Import HoTT.
 Require Import Pushforwards.
-Require Import FunextAxiom.
 
 Generalizable Variables T F A B.
 
@@ -24,68 +23,20 @@ Global Instance Grpd: TCategory := {
   }.
 *)
 
-Class TFunctor (T: Endofunctor) := {
-  fmap: forall {A B: Type}, (A -> B) -> (T A -> T B);
-  pres_id: forall {A: Type}, @fmap A A idmap = idmap;
-  pres_compose: forall {A B C: Type} (f: B -> C) (g: A -> B), 
-                fmap (f o g) = (fmap f) o (fmap g) 
-  }.
+Class TFunctor (F: Endofunctor) :=
+  fmap: forall {A B: Type}, (A -> B) -> (F A -> F B).
 
-Arguments fmap T {_} A B _ _.
-Notation "T $ a" := (fmap T _ _ a) (at level 99, right associativity).
+Arguments fmap F {_} A B _ _.
+Global Notation "f $ a" := (fmap f _ _ a) (at level 99, right associativity).
 
-Class TApplicative (T: Endofunctor) := {
+Class TApplicative `{TFunctor T} := {
   pure: forall {A: Type}, A -> T A;
-  fzip: forall {A B: Type}, T (A -> B) -> T A -> T B;
-  pure_id: forall {A: Type}, @fzip A A (pure idmap) = idmap;
-  (** [f] $* [x] = [f x] *)
-  homomorphism: forall {A B: Type} (f: A -> B) (x: A), 
-                  fzip (pure f) (pure x) = pure (f x);
-  (** u $* [x] = [fun g => g x] $* u *)
-  interchange: forall {A B: Type} (u: T (A -> B)) (x: A),
-               fzip u (pure x) = fzip (pure (fun g => g x)) u;
-  (** f $* (g $* x) = (([o] $* f) $* g) $* x *)
-  composition: forall {A B C: Type} (f: T(B -> C)) (g: T(A -> B)) (x: T A),
-    fzip f (fzip g x) = fzip (fzip (fzip (pure (fun u v => u o v)) f) g) x
+  fzip: forall {A B: Type}, T (A -> B) -> T A -> T B
   }.
 
-Arguments pure T {_ A} _.
-Arguments fzip T {_} A B _ _.
-
-Notation "[ x ]" := (pure _ x).
-Notation "f $* a" := (fzip _ _ _  f a) (at level 90, right associativity).
-
-Section Applicative.
-
-  Context `{TApplicative T}.
-  
-  Section Applicative_is_functor.
-  
-    Let T_fmap := fun (A B: Type) (f: A -> B) => fzip T _ _ [f].
-    Let T_pres_id := fun A: Type => @pure_id _ _ A.
-    Let T_pres_compose: forall (A B C : Type) (f : B -> C) (g : A -> B),
-              T_fmap A C (fun x : A => f (g x)) =
-              (fun x : T A => T_fmap B C f (T_fmap A B g x)).
-      intros; unfold T_fmap.
-      by_extensionality x.
-      transitivity ((([compose] $* [f]) $* [g]) $* x).
-      - rewrite (homomorphism compose f).
-        rewrite (homomorphism _ g).
-        trivial.
-      - exact (composition [f] [g] x)^.
-      Defined.
-    
-    Global Instance applicative_is_functor: TFunctor T
-      := Build_TFunctor T T_fmap T_pres_id T_pres_compose.
-    
-  End Applicative_is_functor.
-
-  Lemma pure_natural `(f: A -> B) (x: A): (T $ f) [x] = [f x].
-    unfold "$", applicative_is_functor.
-    destruct H; eauto.
-    Defined.
-
-End Applicative.
+Arguments TApplicative T [_].
+Arguments pure T [_ _ A] _.
+Arguments fzip T [_ _] A B _ _.
 
 Class TMonad (T: Endofunctor) := {
   bind: forall {A B: Type}, (T A) -> (A -> T B) -> T B;
@@ -172,15 +123,3 @@ Section Algebras.
     assert (Rx = Sx).
     destruct Rx as [?h ?p], Sx as [?h ?p].
     destruct A.
-    pose (path_hh' := (contr h0)^ @ (contr h)).
-    apply path_sigma.
-
-  Record TAlg_map {A B: Type} (AT: TAlgebra A) (BT: TAlgebra B) :=
-    {
-      base_map: A -> B;
-      op_map: forall (f: sig AT.(is_op)), { g: sig BT.(is_op) |
-              g.1 o base_map = base_map o f.1 };
-      compose_map: ???
-    }.
-    
-End Algebras.
