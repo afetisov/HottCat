@@ -5,7 +5,7 @@ Require Import FunextAxiom.
 Generalizable Variables T F A B C.
 
 Local Notation Endofunctor := (Type -> Type).
-Notation "f $ x" := (f(x)) (at level 60, right associativity).
+Notation "f $ x" := (f(x)) (at level 60, right associativity, only parsing).
 
 (*
 Class TCategory := {
@@ -179,12 +179,11 @@ Section Monads.
     unfold join, fmap. simpl.
     apply path_forall. unfold "_ == _". intro.
     f_ap.
-    assert (p := fun a => ret_unit_left (fun g => ret (g a)) 
+    assert (p := fun a => inverse $ ret_unit_left (fun g => ret (g a)) 
           (fun t : T (T A) => x0 <- t; x0)).
     apply path_forall in p.
     induction p.
-    rewrite (fun a => ret_unit_left (fun g => ret (g a)) 
-          (fun t : T (T A) => x0 <- t; x0)).
+    Admitted.
     
   Lemma ret_is_unit (A: Type) (x: T A): join ((T $$ ret) x) = x.
   Admitted.
@@ -233,17 +232,6 @@ Section Algebras.
   Arguments unit {A} _ _.
   Arguments unique_op {A} _.
   
-  Theorem unique_compose {X: Type} {A: TAlgebra X} 
-        (f: sig (T_is_op A.(is_op)))  (g: sig A.(is_op)) 
-        (R S: VirtualCompose A.(is_op)): R f g = S f g.
-    unfold VirtualCompose in R, S.
-    pose (Rx := R f g).
-    pose (Sx := S f g).
-    assert (Rx = Sx).
-    destruct Rx as [?h ?p], Sx as [?h ?p].
-    destruct A.
-    pose (path_hh' := (contr h0)^ @ (contr h)).
-    apply path_sigma.
 
   Record TAlg_map {A B: Type} (AT: TAlgebra A) (BT: TAlgebra B) :=
     {

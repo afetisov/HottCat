@@ -4,24 +4,6 @@ Require Import Pushforwards.
 Generalizable Variables T F A B.
 
 Local Notation Endofunctor := (Type -> Type).
-(*
-Class TCategory := {
-  Ob: Type;
-  Hom: relation Ob;
-  id: forall x: Ob, Hom x x;
-  comp: forall x y z: Ob, Hom y z -> Hom x y -> Hom x z
-  }.
-
-Infix "-->" := Hom (at level 90, right associativity).
-Coercion Ob: TCategory >-> Sortclass.
-
-Global Instance Grpd: TCategory := {
-  Ob := Type;
-  Hom := fun x y: Type => x -> y;
-  id := fun x: Type => idmap;
-  comp := fun (x y z: Type) (f: y -> z) (g: x -> y) => f o g
-  }.
-*)
 
 Class TFunctor (F: Endofunctor) :=
   fmap: forall {A B: Type}, (A -> B) -> (F A -> F B).
@@ -74,13 +56,8 @@ End Monads.
 
 Section Algebras.
 
-  (** We need to define a T-algebra on Type (regarding T as a functor, not as a monad). The most important case is `T = List`, `T_act ([X_1, .. , X_n]) := X_1 * .. * X_n`, but there are at least a few other variants (corresponding to commutative product on Type or the structure of commutative ring wrt +,* ). *)
   Context `{TMonad T}.
   Variable T_act: T Type -> Type.
-
-  (** We regard the type family is_op as a predicate stating that a function `f: T A -> A` is a "virtual operation", i.e. it is an iterated composition of some deining set of primitive operations or their deformations. E.g. if A is a strict semigroup and T = List, then `m: T A -> A` is a tuple (m_0, m_1, .. , m_k, ..) of k-ary products `m_k: A^k -> A` and a virtual operation is a pair (h: T A -> A, p: h = m). Note that in this case all iterated compositions of m are trivially equal to m and thus we can define a composition of virtual operations, extending the usual one. In general there will be nontrivial paths between iterated compositions of m_i, thus we need to choose composition on `sig is_op` beforehand. *)
-(*  Definition VirtualOp {A: Type} (is_op: (T A -> A) -> Type) := 
-    exists (f: T A -> A), is_op f.*)
 
   Section Composition.
   
