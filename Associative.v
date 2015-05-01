@@ -1,8 +1,36 @@
 Require Import HoTT.
+Require Import Functors.
 
 Open Scope list_scope.
 
-Generalizable All Variables.
+Generalizable Variables A B X Y f g x y z w T F.
+
+Section List_is_monad.
+  Notation T := list.
+  Local Fixpoint bind (A B: Type) (X: T A) (f: A -> list B): list B
+    := match X with
+       | nil => nil
+       | x :: xs => (f x) ++ (bind A B xs f)
+       end.
+
+  Local Definition ret (A: Type) (X: A): T A := X :: nil.
+  
+  Local Definition ret_unit_left : forall (A B : Type) (k : A -> T B) (a : A),
+                    bind A B (ret A a) k = k a.
+    intros; unfold bind, ret.
+    SearchAbout "++".
+  
+  Local Definition ret_unit_right : forall (A : Type) (m : T A), 
+                    bind A A m (ret A) = m.
+  
+  Local Definition bind_assoc : forall (A B C : Type) (m : T A) (k : A -> T B)
+                   (h : B -> T C), bind A C m (fun x : A => 
+                   bind B C (k x) h) = bind B C (bind A B m k) h.
+  
+  Global Instance list_is_monad : TMonad list
+    := {|  |}
+
+End List_is_monad.
 
 Definition merge {X: Type} : list (list X) -> list X :=
   fix merge lists :=

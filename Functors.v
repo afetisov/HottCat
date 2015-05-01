@@ -4,8 +4,15 @@ Require Import FunextAxiom.
 
 Generalizable Variables T F A B C.
 
+Reserved Notation "T $$ a" (at level 60, right associativity).
+Reserved Notation "f $* x" (at level 60, right associativity).
+Reserved Notation "f $ x" (at level 60, right associativity, only parsing).
+
 Local Notation Endofunctor := (Type -> Type).
 Notation "f $ x" := (f(x)) (at level 60, right associativity, only parsing).
+
+Delimit Scope functor_scope with functor.
+Open Scope functor_scope.
 
 (*
 Class TCategory := {
@@ -34,7 +41,42 @@ Class TFunctor (T: Endofunctor) := {
   }.
 
 Arguments fmap T {_} A B _ _.
-Notation "T $$ a" := (fmap T _ _ a) (at level 60, right associativity).
+Arguments pres_id T {_} A .
+Arguments pres_compose T {_ A B C} f g.
+Notation "T $$ a" := (fmap T _ _ a) (at level 60, right associativity): functor_scope.
+Bind Scope functor_scope with TFunctor.
+
+Section Functors.
+  Context `{TFunctor T}.
+  
+  Section Composition.
+    (** A composition of functors is again a functor. *)
+
+    Context `{TFunctor F}.
+    Notation G := (F o T).
+    
+    Local Definition G_fmap: forall {A B: Type}, (A -> B) -> (G A -> G B)
+      := fun A B f => F $$ T $$ f.
+    
+    Local Definition G_id: forall A: Type, (@G_fmap A A idmap) = idmap.
+      intro; unfold G_fmap.
+      rewrite (pres_id T).
+      exact (pres_id F (T A)).
+      Defined.
+    
+    Local Definition G_comp: forall (A B C: Type) (f: B -> C) (g: A -> B), 
+                G_fmap (f o g) = (G_fmap f) o (G_fmap g) .
+      intros; unfold G_fmap.
+      rewrite (pres_compose T).
+      exact (pres_compose F (T $$ f) (T $$ g)).
+      Defined.
+    
+    Global Instance tfunctor_compose `{TFunctor F}: TFunctor (F o T)
+      := {| fmap := @G_fmap; pres_id := G_id; pres_compose := G_comp |}.
+    
+  End Composition.
+
+End Functors.
 
 Class TApplicative (T: Endofunctor) := {
   pure: forall {A: Type}, A -> T A;
@@ -54,8 +96,9 @@ Class TApplicative (T: Endofunctor) := {
 Arguments pure T {_ A} _.
 Arguments fzip T {_} A B _ _.
 
-Notation "[ x ]" := (pure _ x).
-Notation "f $* a" := (fzip _ _ _  f a) (at level 60, right associativity).
+Notation "[ x ]" := (pure _ x): functor_scope.
+Notation "f $* a" := (fzip _ _ _  f a) (at level 60, right associativity): functor_scope.
+Bind Scope functor_scope with TApplicative.
 
 Section Applicative.
 
@@ -123,9 +166,9 @@ Section Monads.
                   => a <- t; g <- f; ret (g a).
     Let T_pure := @ret _ _.
     
-    Notation "[ x ]" := (T_pure _ x).
+    Notation "[ x ]" := (T_pure _ x): functor_scope.
     Notation "f $* a" := (T_fzip _ _  f a) 
-                         (at level 60, right associativity).
+                         (at level 60, right associativity): functor_scope.
 
     Local Definition T_pure_id : `(T_fzip A A (T_pure (A -> A) idmap) = idmap).
       intro; unfold T_fzip, T_pure.
@@ -232,13 +275,13 @@ Section Algebras.
   Arguments unit {A} _ _.
   Arguments unique_op {A} _.
   
-
+(*
   Record TAlg_map {A B: Type} (AT: TAlgebra A) (BT: TAlgebra B) :=
     {
       base_map: A -> B;
       op_map: forall (f: sig AT.(is_op)), { g: sig BT.(is_op) |
               g.1 o base_map = base_map o f.1 };
       compose_map: ???
-    }.
+    }.  *)
     
 End Algebras.
