@@ -9,8 +9,8 @@
 Require Setoid.
 Require Import PeanoNat Le Gt Minus Bool.
 *)
-Require Import HoTT.
-Load Misc.
+Require Import HoTT FunextAxiom.
+Require Import HottCat.Misc HottCat.Option.
 
 Set Implicit Arguments.
 (* Set Universe Polymorphism. *)
@@ -73,52 +73,179 @@ Section Lists.
       | b :: m => (b = a) + In a m
     end.
 
+  (*****************************)
+  (** ** Nth element of a list *)
+  (*****************************)
+
+  Fixpoint nth (n:nat) (l:list A) (default:A) {struct l} : A :=
+    match n, l with
+      | O, x :: l' => x
+      | O, other => default
+      | S m, [] => default
+      | S m, x :: t => nth m t default
+    end.
+(*
+  Fixpoint nth_ok (n:nat) (l:list A) (default:A) {struct l} : bool :=
+    match n, l with
+      | O, x :: l' => true
+      | O, other => false
+      | S m, [] => false
+      | S m, x :: t => nth_ok m t default
+    end.
+
+*)
+(*
+  (*****************)
+  (** ** Remove    *)
+  (*****************)
+
+  Hypothesis eq_dec : forall x y : A, {x = y}+{x <> y}.
+
+  Fixpoint remove (x : A) (l : list A) : list A :=
+    match l with
+      | [] => []
+      | y::tl => if (eq_dec x y) then remove x tl else y::(remove x tl)
+    end.
+
+  Theorem remove_In : forall (l : list A) (x : A), ~ In x (remove x l).
+  Proof.
+    induction l as [|x l]; auto.
+    intro y; simpl; destruct (eq_dec y x) as [yeqx | yneqx].
+    apply IHl.
+    unfold not; intro HF; simpl in HF; destruct HF; auto.
+    apply (IHl y); assumption.
+  Qed.
+*)
+
+(******************************)
+(** ** Last element of a list *)
+(******************************)
+
+  (** [last l d] returns the last element of the list [l],
+    or the default value [d] if [l] is empty. *)
+
+  Fixpoint last (l:list A) (d:A) : A :=
+  match l with
+    | [] => d
+    | [a] => a
+    | a :: l => last l d
+  end.
+
+  (** [removelast l] remove the last element of [l] *)
+
+  Fixpoint removelast (l:list A) : list A :=
+    match l with
+      | [] =>  []
+      | [a] => []
+      | a :: l => a :: removelast l
+    end.
+
+
 End Lists.
 
-Section Facts.
+Section List_discrim.
 
-  Variable A : Type.
-
-
-  (** *** Genereric facts *)
+  Context {A : Type}.
 
   (** Discrimination *)
   Theorem nil_cons : forall (x:A) (l:list A), [] <> x :: l.
   Proof.
     intros x l p. 
     apply (ap length) in p.
-    SearchAbout (_ =n _).
-    simpl in p.
-    SearchAbout (0 = S _).
+    exact (nat_discr p).
   Qed.
 
+  Lemma nil_cons' (x:A) (l:list A): x :: l <> [].
+  Proof.
+    intro p. exact (nil_cons p^).
+  Qed.
+
+  Theorem cons_discr: forall (x: A) (l: list A), ([] = x :: l) <~> Empty.
+    intros.
+    refine (BuildEquiv _ Empty (@nil_cons x l) 
+            (BuildIsEquiv _ Empty _ _ _ _ _) ).
+    - induction 1.
+    - unfold Sect. induction x0.
+    - unfold Sect; intro. 
+      cut Empty; [ induction 1 | exact (nil_cons x0) ].
+    - intro. assert Empty; [ exact (nil_cons x0) | contradiction ].
+    Qed.
+
+  Theorem app_cons_not_nil : forall (x y:list A) (a:A), [] <> x ++ a :: y.
+  Proof.
+    unfold not.
+    destruct x as [| a l]; simpl; intros.
+    exact (cons_discr a y X).
+    exact (cons_discr a _ X).
+  Qed.
+
+End List_discrim.
+
+(** We use "discrim" auto database as a subsitute for "discriminate" tactic. *)
+Hint Resolve nil_cons nil_cons' app_cons_not_nil: discrim.
+
+Section Head_facts.
+  Context {A: Type}.
+  
+  (** *** Genereric facts *)
 
   (** Destruction *)
 
-  Theorem destruct_list : forall l : list A, {x:A & {tl:list A | l = x::tl}}+{l = []}.
+  Theorem destruct_list : forall l : list A, {x:A & {tl:list A | l = x::tl}} + (l = []).
   Proof.
     induction l as [|a tail].
     right; reflexivity.
     left; exists a, tail; reflexivity.
-  Qed.
+  Defined.
 
   Lemma hd_error_tl_repr : forall l (a:A) r,
-    hd_error l = Some a /\ tl l = r <-> l = a :: r.
-  Proof. destruct l as [|x xs].
-    - unfold hd_error, tl; intros a r. split; firstorder discriminate.
-    - intros. simpl. split.
-      * intros (H1, H2). inversion H1. rewrite H2. reflexivity.
-      * inversion 1. subst. auto.
-  Qed.
+    hd_error l = Some a /\ tl l = r <~> l = a :: r.
+  Proof. 
+    destruct l as [|x xs].
+    - unfold hd_error, tl; intros a r.
+      refine (equiv_compose (B:= Empty) _ _).
+      * exact ((cons_discr a r)^-1.(equiv_fun)).
+      * intro x; cut(Empty * ([] = r)). 
+        destruct 1; exact fst.
+        destruct x.
+        exact (@equiv_path_opt A error (Some a) fst , snd).
+      * exact (equiv_isequiv (equiv_inverse _)).
+    - intros. simpl.
+      refine (equiv_adjointify _ _ _ _).
+      * intros (p, ps); f_ap.
+        exact (equiv_path_opt p).
+      * intro p. exact (ap hd_error p, ap tl p).
+      * unfold Sect. 
+        intro p; generalize (ap tl p); generalize (ap hd_error p); simpl.
+        path_induction.
+        Admitted.
 
-  Lemma hd_error_some_nil : forall l (a:A), hd_error l = Some a -> l <> nil.
-  Proof. unfold hd_error. destruct l; now discriminate. Qed.
+  Lemma hd_error_some_nil : forall l (a:A), 
+        (hd_error l = Some a) -> (l <> nil).
+  Proof. 
+    unfold hd_error.
+    destruct l; intros.
+    cut Empty; [ induction 1 | exact (error_ne_some a X) ].
+    exact (@nil_cons' A a l).
+  Qed.
 
   Theorem length_zero_iff_nil (l : list A):
-    length l = 0 <-> l=[].
+    length l = 0 <~> l=[].
   Proof.
-    split; [now destruct l | now intros ->].
-  Qed.
+    assert (p: l = [] <~> length l = 0).
+    refine (equiv_adjointify (ap length) _ _ _).
+    - destruct l; auto. simpl. intro s; cut Empty.
+      exact (inverse o (cons_discr a l)^-1).
+      exact (nat_discr s^).
+    - unfold Sect; simpl; intros.
+      destruct l; auto.
+      revert x; simpl.
+      assert (forall (x y: nat) (p: 0 = x) (q: 0 = y), 
+              {s: x = y & s # p = q}).
+      path_induction; refine (idpath; _); done.
+      intro p.
+      Compute (X 0 0 idpath p).
+      apply (X 0 0 idpath) in p.
 
   (** *** Head and tail *)
 
@@ -130,7 +257,136 @@ Section Facts.
   Theorem hd_error_cons : forall (l : list A) (x : A), hd_error (x::l) = Some x.
   Proof.
     intros; simpl; reflexivity.
+  Defined.
+
+End Head_facts.
+
+Hint Resolve hd_error_cons hd_error_nil: datatypes.
+
+Section App_facts.
+  Context {A: Type}.
+  
+  (**************************)
+  (** *** Facts about [app] *)
+  (**************************)
+
+  (** Concat with [nil] *)
+  Theorem app_nil_l : forall l:list A, [] ++ l = l.
+  Proof.
+    reflexivity.
+  Defined.
+
+  Theorem app_nil_r : forall l:list A, l ++ [] = l.
+  Proof. 
+    induction l; simpl; f_ap.
+  Defined.
+
+  (* begin hide *)
+  (* Deprecated *)
+  Theorem app_nil_end : forall (l:list A), l = l ++ [].
+  Proof. intro; symmetry; apply app_nil_r. Defined.
+  (* end hide *)
+
+  (** [app] is associative *)
+  Theorem app_assoc : forall l m n:list A, l ++ m ++ n = (l ++ m) ++ n.
+  Proof.
+    intros l m n; induction l; simpl; f_ap.
+  Defined.
+
+  (* begin hide *)
+  (* Deprecated *)
+  Theorem app_assoc_reverse : forall l m n:list A, (l ++ m) ++ n = l ++ m ++ n.
+  Proof.
+     intros; exact ((app_assoc l m n)^).
+  Defined.
+  Hint Resolve app_assoc_reverse.
+  (* end hide *)
+
+  (** [app] commutes with [cons] *)
+  Theorem app_comm_cons : forall (x y:list A) (a:A), a :: (x ++ y) = (a :: x) ++ y.
+  Proof.
+    auto.
+  Defined.
+  
+  Lemma app_nil (l l': list A): (l ++ l' = []) -> (l = []) /\ (l' = []).
+  Proof.
+    destruct l; auto.
+    intro p. apply (concat (app_comm_cons l l' a)) in p.
+    elimtype Empty. exact (cons_discr a _ p^).  
   Qed.
+  
+End App_facts.
+
+Hint Resolve app_comm_cons app_assoc app_assoc_reverse app_nil_r app_nil_l: datatypes.
+
+Section Facts.
+  Context {A: Type}.
+  
+  (****************************************)
+  (** *** Facts about last and removelast *)
+  (****************************************)
+
+  Lemma cons_removelast : forall (l: list A) (a: A),
+      l <> [] -> removelast (a :: l) = a :: (removelast l).
+  Proof.
+    induction l; intros.
+    elimtype Empty; exact (X idpath).
+    destruct l; auto.
+  Qed.
+
+  Lemma app_removelast_last : forall (l: list A) (d: A),
+        (l = []) \/ (l = removelast l ++ [last l d]).
+  Proof.
+    induction l; intros.
+    left; auto.
+    right. assert (p := IHl d).
+    destruct p. 
+    induction (p^); done.
+    assert (l <> []).
+    { intro t; apply (concat p^) in t.
+      exact (app_cons_not_nil (removelast l) [] (last l d) t^). }
+    assert (s := ap (cons a) p).
+    refine (concat s _).
+    path_via (removelast (a :: l) ++ [last l d]).
+    exact (ap (fun x => x++ [last l d]) (cons_removelast a X)^).
+    assert (last l d = last (a::l) d).
+    { destruct l; auto. elimtype Empty; exact (X idpath). }
+    exact (ap (fun x => removelast (a::l) ++ [x]) X0).
+  Defined.
+
+  Lemma exists_last :
+    forall l, l <> [] -> { l' : (list A) & { a : A | l = l' ++ [a]}}.
+  Proof.
+    induction l.
+    destruct 1; auto.
+    intros _.
+    destruct l.
+    exists [], a; auto.
+    destruct IHl as [l' (a',H)]. exact (cons_discr a0 l o inverse).
+    rewrite H.
+    exists (a::l'), a'; auto.
+  Defined.
+
+  Lemma removelast_app : forall (l l': list A), 
+        l' <> [] -> removelast (l++l') = l ++ removelast l'.
+  Proof.
+    induction l.
+    simpl; auto.
+    simpl; intros.
+    assert (l++l' <> []).
+    destruct l.
+    simpl; auto.
+    eauto using app_cons_not_nil with path_hints.
+    intro; cut (l' ++ a0 :: l = []).
+    exact (app_cons_not_nil l' l a0 o inverse).
+    apply (app_nil _ _)  in X0.
+    destruct X0 as [p q].
+    exact ((ap (fun x => x ++ a0::l)) q @ ap (fun x => [] ++ x) p).
+    apply (IHl l') in X.
+    destruct (l++l').
+    elimtype Empty; exact (X0 idpath).
+    exact (ap (cons a) X).
+  Defined.
 
 
   (************************)
@@ -143,43 +399,46 @@ Section Facts.
   Theorem in_eq : forall (a:A) (l:list A), In a (a :: l).
   Proof.
     simpl; auto.
-  Qed.
+  Defined.
 
   Theorem in_cons : forall (a b:A) (l:list A), In b l -> In b (a :: l).
   Proof.
     simpl; auto.
-  Qed.
+  Defined.
 
   Theorem not_in_cons (x a : A) (l : list A):
-    ~ In x (a::l) <-> x<>a /\ ~ In x l.
+    ~ In x (a::l) <~> x<>a /\ ~ In x l.
   Proof.
-    simpl. intuition.
-  Qed.
+    Admitted.
+
 
   Theorem in_nil : forall a:A, ~ In a [].
   Proof.
-    unfold not; intros a H; inversion_clear H.
+    unfold not, In; auto.
   Qed.
 
   Theorem in_split : forall x (l:list A), In x l -> exists l1 l2, l = l1++x::l2.
   Proof.
   induction l; simpl; destruct 1.
-  subst a; auto.
-  exists [], l; auto.
-  destruct (IHl H) as (l1,(l2,H0)).
-  exists (a::l1), l2; simpl. apply f_equal. auto.
-  Qed.
+  exact ([] ; (l; ap (fun y => y ::l) p)).
+  apply IHl in i.
+  destruct i as (l1 & l2 & s).
+  refine (a::l1; (l2; _ )).
+  transitivity (a:: (l1 ++ x :: l2)).
+  exact (ap (cons a) s).
+  exact (app_comm_cons _ _ _).
+  Defined.
 
   (** Inversion *)
   Lemma in_inv : forall (a b:A) (l:list A), In b (a :: l) -> a = b \/ In b l.
   Proof.
-    intros a b l H; inversion_clear H; auto.
-  Qed.
+    intros a b l H. destruct H; auto.
+  Defined.
 
   (** Decidability of [In] *)
   Theorem in_dec :
-    (forall x y:A, {x = y} + {x <> y}) ->
-    forall (a:A) (l:list A), {In a l} + {~ In a l}.
+    (forall x y:A, (x = y) + (x <> y)) ->
+    forall (a:A) (l:list A), (In a l) + (~ In a l).
   Proof.
     intro H; induction l as [| a0 l IHl].
     right; apply in_nil.
@@ -188,86 +447,85 @@ Section Facts.
     right; unfold not; intros [Hc1| Hc2]; auto.
   Defined.
 
+  (** Compatibility with other operations *)
 
-  (**************************)
-  (** *** Facts about [app] *)
-  (**************************)
+  Open Scope nat_scope.
 
-  (** Discrimination *)
-  Theorem app_cons_not_nil : forall (x y:list A) (a:A), [] <> x ++ a :: y.
+  Lemma app_length : forall l l' : list A, length (l++l') = length l + length l'. 
   Proof.
-    unfold not.
-    destruct x as [| a l]; simpl; intros.
-    discriminate H.
-    discriminate H.
-  Qed.
+    induction l; intro; simpl; auto. exact (ap S (IHl l')).
+  Defined.
 
-
-  (** Concat with [nil] *)
-  Theorem app_nil_l : forall l:list A, [] ++ l = l.
+  Lemma in_app_or : forall (l m:list A) (a:A), 
+                    In a (l ++ m) -> In a l + In a m.
   Proof.
-    reflexivity.
-  Qed.
+    intros l m a.
+    elim l; simpl; auto.
+    intros a0 y H H0.
+    destruct H0; auto.
+    apply H in i; destruct i; auto.
+  Defined.
 
-  Theorem app_nil_r : forall l:list A, l ++ [] = l.
-  Proof. 
-    induction l; simpl; f_equal; auto.
-  Qed.
-
-  (* begin hide *)
-  (* Deprecated *)
-  Theorem app_nil_end : forall (l:list A), l = l ++ [].
-  Proof. symmetry; apply app_nil_r. Qed.
-  (* end hide *)
-
-  (** [app] is associative *)
-  Theorem app_assoc : forall l m n:list A, l ++ m ++ n = (l ++ m) ++ n.
+  Lemma in_or_app : forall (l m:list A) (a:A), In a l + In a m -> In a (l ++ m).
   Proof.
-    intros l m n; induction l; simpl; f_equal; auto.
-  Qed.
+    intros l m a.
+    elim l; simpl; intro H.
+    destruct H; auto. induction e.
+    intros.
+    destruct X0; auto.
+    destruct s; auto.
+  Defined.
 
-  (* begin hide *)
-  (* Deprecated *)
-  Theorem app_assoc_reverse : forall l m n:list A, (l ++ m) ++ n = l ++ m ++ n.
+  Lemma in_app_iff : forall l l' (a:A), In a (l++l') <~> In a l + In a l'.
   Proof.
-     auto using app_assoc.
-  Qed.
-  Hint Resolve app_assoc_reverse.
-  (* end hide *)
+    intros.
+    refine (equiv_adjointify (in_app_or l l' a) (in_or_app l l' a) _ _).
+    - unfold Sect. intros.
+  Admitted.
 
-  (** [app] commutes with [cons] *)
-  Theorem app_comm_cons : forall (x y:list A) (a:A), a :: (x ++ y) = (a :: x) ++ y.
+
+  Lemma app_inv_head:
+   forall l l1 l2 : list A, l ++ l1 = l ++ l2 -> l1 = l2.
   Proof.
-    auto.
-  Qed.
+    induction l; simpl; auto. intros.
+    exact (IHl l1 l2 (ap tl X)).
+  Defined.
+
+  Lemma app_inv_tail:
+    forall l l1 l2 : list A, l1 ++ l = l2 ++ l -> l1 = l2.
+  Proof.
+    intros l l1 l2; revert l1 l2 l.
+    induction l1 as [ | x1 l1]; destruct l2 as [ | x2 l2];
+     simpl; auto; intros l H.
+  Admitted.
+
 
   (** Facts deduced from the result of a concatenation *)
 
-  Theorem app_eq_nil : forall l l':list A, l ++ l' = [] -> l = [] /\ l' = [].
+  Theorem app_eq_nil : forall l l':list A, 
+                       (l ++ l' = []) -> ((l = []) + (l' = [])).
   Proof.
     destruct l as [| x l]; destruct l' as [| y l']; simpl; auto.
-    intro; discriminate.
-    intros H; discriminate H.
+    intro; elimtype Empty. exact (cons_discr x _ X^).
   Qed.
 
   Theorem app_eq_unit :
     forall (x y:list A) (a:A),
-      x ++ y = [a] -> x = [] /\ y = [a] \/ x = [a] /\ y = [].
+      (x ++ y = [a]) -> (x = [] /\ y = [a]) \/ (x = [a] /\ y = []).
   Proof.
-    destruct x as [| a l]; [ destruct y as [| a l] | destruct y as [| a0 l0] ];
-      simpl.
-    intros a H; discriminate H.
+    destruct x as [| a l]; [ destruct y as [| a l] | destruct y as [| a0 l0] ]; simpl.
+    intros a H. elimtype Empty. exact (cons_discr _ _ H).
     left; split; auto.
     right; split; auto.
-    generalize H.
-    generalize (app_nil_r l); intros E.
-    rewrite -> E; auto.
-    intros.
-    injection H.
-    intro.
-    assert ([] = l ++ a0 :: l0) by auto.
-    apply app_cons_not_nil in H1 as [].
-  Qed.
+    exact ((app_nil_r (a::l))^ @ X).
+    intros. elimtype Empty.
+    apply (ap length) in X. SearchAbout length "++".
+    apply (concat (app_length (a::l) (a0::l0))^ ) in X.
+    simpl in X.
+    apply (ap pred) in X; simpl in X.
+    apply (concat (nat_plus_n_Sm _ _)) in X.
+    exact (nat_discr X^).
+  Defined.
 
   Lemma app_inj_tail :
     forall (x y:list A) (a b:A), x ++ [a] = y ++ [b] -> x = y /\ a = b.
@@ -276,9 +534,9 @@ Section Facts.
       [ destruct y as [| a l] | destruct y as [| a l0] ];
       simpl; auto.
     - intros a b H.
-      injection H.
-      auto.
+      apply (ap (hd a)) in H; auto.
     - intros a0 b H.
+      exact (ap removelast H, ap last H).
       injection H as H1 H0.
       apply app_cons_not_nil in H0 as [].
     - intros a b H.
@@ -292,66 +550,6 @@ Section Facts.
   Qed.
 
 
-  (** Compatibility with other operations *)
-
-  Lemma app_length : forall l l' : list A, length (l++l') = length l + length l'.
-  Proof.
-    induction l; simpl; auto.
-  Qed.
-
-  Lemma in_app_or : forall (l m:list A) (a:A), In a (l ++ m) -> In a l \/ In a m.
-  Proof.
-    intros l m a.
-    elim l; simpl; auto.
-    intros a0 y H H0.
-    now_show ((a0 = a \/ In a y) \/ In a m).
-    elim H0; auto.
-    intro H1.
-    now_show ((a0 = a \/ In a y) \/ In a m).
-    elim (H H1); auto.
-  Qed.
-
-  Lemma in_or_app : forall (l m:list A) (a:A), In a l \/ In a m -> In a (l ++ m).
-  Proof.
-    intros l m a.
-    elim l; simpl; intro H.
-    now_show (In a m).
-    elim H; auto; intro H0.
-    now_show (In a m).
-    elim H0. (* subProof completed *)
-    intros y H0 H1.
-    now_show (H = a \/ In a (y ++ m)).
-    elim H1; auto 4.
-    intro H2.
-    now_show (H = a \/ In a (y ++ m)).
-    elim H2; auto.
-  Qed.
-
-  Lemma in_app_iff : forall l l' (a:A), In a (l++l') <-> In a l \/ In a l'.
-  Proof.
-    split; auto using in_app_or, in_or_app.
-  Qed.
-
-  Lemma app_inv_head:
-   forall l l1 l2 : list A, l ++ l1 = l ++ l2 -> l1 = l2.
-  Proof.
-    induction l; simpl; auto; injection 1; auto.
-  Qed.
-
-  Lemma app_inv_tail:
-    forall l l1 l2 : list A, l1 ++ l = l2 ++ l -> l1 = l2.
-  Proof.
-    intros l l1 l2; revert l1 l2 l.
-    induction l1 as [ | x1 l1]; destruct l2 as [ | x2 l2];
-     simpl; auto; intros l H.
-    absurd (length (x2 :: l2 ++ l) <= length l).
-    simpl; rewrite app_length; auto with arith.
-    rewrite <- H; auto with arith.
-    absurd (length (x1 :: l1 ++ l) <= length l).
-    simpl; rewrite app_length; auto with arith.
-    rewrite H; auto with arith.
-    injection H; clear H; intros; f_equal; eauto.
-  Qed.
 
 End Facts.
 
@@ -369,27 +567,11 @@ Hint Resolve in_eq in_cons in_inv in_nil in_app_or in_or_app: datatypes v62.
 
 Section Elts.
 
-  Variable A : Type.
+  Context {A : Type}.
 
   (*****************************)
   (** ** Nth element of a list *)
   (*****************************)
-
-  Fixpoint nth (n:nat) (l:list A) (default:A) {struct l} : A :=
-    match n, l with
-      | O, x :: l' => x
-      | O, other => default
-      | S m, [] => default
-      | S m, x :: t => nth m t default
-    end.
-
-  Fixpoint nth_ok (n:nat) (l:list A) (default:A) {struct l} : bool :=
-    match n, l with
-      | O, x :: l' => true
-      | O, other => false
-      | S m, [] => false
-      | S m, x :: t => nth_ok m t default
-    end.
 
   Lemma nth_in_or_default :
     forall (n:nat) (l:list A) (d:A), {In (nth n l d) l} + {nth n l d = d}.
@@ -553,89 +735,6 @@ Section Elts.
     induction n; intros [|a l] H; auto; try solve [inversion H].
     simpl in *. apply IHn. auto with arith.
   Qed.
-
-  (*****************)
-  (** ** Remove    *)
-  (*****************)
-
-  Hypothesis eq_dec : forall x y : A, {x = y}+{x <> y}.
-
-  Fixpoint remove (x : A) (l : list A) : list A :=
-    match l with
-      | [] => []
-      | y::tl => if (eq_dec x y) then remove x tl else y::(remove x tl)
-    end.
-
-  Theorem remove_In : forall (l : list A) (x : A), ~ In x (remove x l).
-  Proof.
-    induction l as [|x l]; auto.
-    intro y; simpl; destruct (eq_dec y x) as [yeqx | yneqx].
-    apply IHl.
-    unfold not; intro HF; simpl in HF; destruct HF; auto.
-    apply (IHl y); assumption.
-  Qed.
-
-
-(******************************)
-(** ** Last element of a list *)
-(******************************)
-
-  (** [last l d] returns the last element of the list [l],
-    or the default value [d] if [l] is empty. *)
-
-  Fixpoint last (l:list A) (d:A) : A :=
-  match l with
-    | [] => d
-    | [a] => a
-    | a :: l => last l d
-  end.
-
-  (** [removelast l] remove the last element of [l] *)
-
-  Fixpoint removelast (l:list A) : list A :=
-    match l with
-      | [] =>  []
-      | [a] => []
-      | a :: l => a :: removelast l
-    end.
-
-  Lemma app_removelast_last :
-    forall l d, l <> [] -> l = removelast l ++ [last l d].
-  Proof.
-    induction l.
-    destruct 1; auto.
-    intros d _.
-    destruct l; auto.
-    pattern (a0::l) at 1; rewrite IHl with d; auto; discriminate.
-  Qed.
-
-  Lemma exists_last :
-    forall l, l <> [] -> { l' : (list A) & { a : A | l = l' ++ [a]}}.
-  Proof.
-    induction l.
-    destruct 1; auto.
-    intros _.
-    destruct l.
-    exists [], a; auto.
-    destruct IHl as [l' (a',H)]; try discriminate.
-    rewrite H.
-    exists (a::l'), a'; auto.
-  Qed.
-
-  Lemma removelast_app :
-    forall l l', l' <> [] -> removelast (l++l') = l ++ removelast l'.
-  Proof.
-    induction l.
-    simpl; auto.
-    simpl; intros.
-    assert (l++l' <> []).
-    destruct l.
-    simpl; auto.
-    simpl; discriminate.
-    specialize (IHl l' H).
-    destruct (l++l'); [elim H0; auto|f_equal; auto].
-  Qed.
-
 
   (****************************************)
   (** ** Counting occurences of a element *)

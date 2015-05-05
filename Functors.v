@@ -1,5 +1,5 @@
 Require Import HoTT.
-Require Import Pushforwards.
+Require Import HottCat.Pushforwards.
 Require Import FunextAxiom.
 
 Generalizable Variables T F A B C.
