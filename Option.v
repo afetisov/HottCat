@@ -1,5 +1,5 @@
 Require Import HoTT.
-Require Import HottCat.Functors.
+Require Import HottCat.TFunctors.
 
 Section Option_is_monad.
   Notation T := option.

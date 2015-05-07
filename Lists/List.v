@@ -10,9 +10,10 @@ Require Setoid.
 Require Import PeanoNat Le Gt Minus Bool.
 *)
 Require Import HoTT FunextAxiom.
-Require Import HottCat.Misc HottCat.Option.
+Require Import HottCat.Misc HottCat.Option HottCat.TFunctors.
 
 Set Implicit Arguments.
+Set Maximal Implicit Insertion.
 (* Set Universe Polymorphism. *)
 
 (******************************************************************)
@@ -34,6 +35,70 @@ Notation " [ x ; .. ; y ] " := (cons x .. (cons y nil) ..) : list_scope.
 End ListNotations.
 
 Import ListNotations.
+
+Section List_eq.
+  Context {A: Type}.
+  (**************************)
+  (** *** Equality type for lists: two elements are equall iff their hnf's are equal. *)
+  (**************************)
+
+  Fixpoint list_code (l l': list A) :=
+    match l, l' with
+    | [], [] => Unit
+    | x::xs, y::ys => (x = y) /\ (list_code xs ys)
+    | _, _ => Empty
+    end.
+  
+  Infix "=list" := list_code (at level 70, right associativity).
+  
+  Fixpoint list_code_id (l: list A): l =list l :=
+    match l with
+    | [] => tt
+    | x :: xs => (idpath, list_code_id xs)
+    end.
+  
+  Definition list_encode (l l': list A): (l = l') -> (l =list l')
+    := fun p => match p with | idpath => list_code_id _ end.
+
+  Fixpoint list_decode (l l': list A): (l =list l') -> (l = l').
+    induction l, l'; induction 1.
+    exact idpath.
+    f_ap.
+    exact (list_decode l l' snd).
+    Defined.
+
+  Global Instance isequiv_list_encode {l l': list A}: 
+                                      IsEquiv (@list_encode l l').
+    refine (isequiv_adjointify (@list_encode l l') (@list_decode l l') _ _); revert l l'.
+    - unfold Sect.
+      (* Should make up some tactic to use here TODO *)
+      pose (T := fun (l l' : list A) (x : l =list l') => list_encode (list_decode l l' x) = x).
+      refine (fix sect (l l': list A) (x : l =list l'): T l l' x:= _ ).
+      unfold T; intros.
+      induction l, l'; simpl.
+      * exact (path_contr _ _).
+      * induction x.
+      * induction x.
+      * destruct x as [p Ix].
+        induction p.
+        Lemma cons_encode (l l': list A) (a: A) (p: l = l'): 
+            list_encode (ap (cons a) p) = (idpath, list_encode p).
+          path_induction. done.
+          Defined.
+        path_via (@idpath A a, list_encode (list_decode l l' Ix)).
+        exact (@cons_encode l l' a _).
+        f_ap. exact (sect l l' Ix).
+    - unfold Sect; intros. 
+      path_induction.
+      simpl.
+      induction l. done.
+      simpl. rewrite IHl. done.
+  Defined.
+  
+  Definition equiv_path_list (l l': list A): (l = l') <~> (l =list l')
+    := {| equiv_fun := @list_encode l l'; equiv_isequiv := _ |}.
+  
+End List_eq.
 
 Section Lists.
 
@@ -198,6 +263,19 @@ Section Head_facts.
     left; exists a, tail; reflexivity.
   Defined.
 
+  Fixpoint path_list_hd_tl (l l': list A):
+        (l = l') <~> (hd_error l) = (hd_error l') /\ (tl l) = (tl l').
+    induction l, l'.
+    - simpl. refine (_ oE (prod_unit_l ([] = []))^-1 ).
+      exact (@equiv_functor_prod_r Unit (error = error) ([] = []) 
+                              (@equiv_path_opt A error error)^-1).
+    - simpl. refine (_ oE cons_discr a l').
+      refine (_ oE (prod_empty_l ([] = l'))^-1).
+      exact (@equiv_functor_prod_r Empty (error = value a) ([] = l') 
+                              (@equiv_path_opt A error (value a))^-1).
+    - 
+    Qed.
+
   Lemma hd_error_tl_repr : forall l (a:A) r,
     hd_error l = Some a /\ tl l = r <~> l = a :: r.
   Proof. 
@@ -216,8 +294,32 @@ Section Head_facts.
         exact (equiv_path_opt p).
       * intro p. exact (ap hd_error p, ap tl p).
       * unfold Sect. 
+        intro p.
+(*        assert (f := list_encode p).
+        assert (ap hd_error p = ap (@value A) (fst f)).
+        induction p.*)
         intro p; generalize (ap tl p); generalize (ap hd_error p); simpl.
         path_induction.
+        assert (forall s: x = a, ap11 match s 
+                in (_ = y) return (cons x = cons y) with
+                | idpath => 1
+                end 1 = p).
+        { path_induction; simpl.
+          (* Could optimize this part TODO *)
+          pose (t := fun (a b c: list A) (p: a = b) (q: a =c),
+                     (p^ @ q) # 
+          assert (forall (a b c: list A) (p: a = b) (q: a =c),
+                  exists s: b = c, s # p = q).
+          path_induction. exact (idpath; idpath).
+          pose (t := (X (x::xs) (x::xs) (x::xs) idpath p).2).
+          simpl in t.
+          exact t.
+        generalize (Option.option_encode p0); simpl.
+        path_induction.
+        set (s := Option.option_encode p0).
+        simpl in s.
+        simpl.
+        unfold Option.option_encode.
         Admitted.
 
   Lemma hd_error_some_nil : forall l (a:A), 
